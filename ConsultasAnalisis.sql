@@ -114,7 +114,6 @@ DROP TABLE #MovsINVCM
 
 DROP TABLE #MovsINVPP
 
-
 --SELECT *
 --FROM AuxiliarU AS au
 --WHERE au.Grupo='PP'
