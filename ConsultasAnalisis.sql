@@ -83,12 +83,14 @@ INSERT INTO #MovsINVCM
 	AND id.ProdSerieLote='521'
 	GROUP BY i.id, i.mov,i.MovID,i.FechaEmision,i.Almacen,id.ProdSerieLote
 
+--Consumos
 INSERT INTO #MovsINVPP
 SELECT p.IDPoliza,pd.Poliza,pd.PolizaID,pd.FechaContable,pd.Cargo,pd.Abono,'INV',i.Mov,i.MovID,pd.Cuenta,i.ID
 FROM #MovsPRODE p
 JOIN #MovsINVCM i ON p.ProdSerieLote=i.ProdSerieLote
 JOIN #PolizasPRODE pd ON pd.ID=p.IDPoliza 
 
+--Transferencias
 INSERT INTO #MovsINVPP
 SELECT p.ID,p.Poliza,p.PolizaID,p.FechaContable,p.Cargo,p.Abono
 	    ,'INV',i.Mov,i.MovID,p.Cuenta,i.ID
@@ -96,6 +98,7 @@ FROM Inv i
 JOIN #PolizasPRODE p ON p.Mov=i.Mov AND p.MovID=i.MovID
 WHERE i.Estatus='CONCLUIDO'
 
+--Entrada de produccion
 INSERT INTO #MovsINVPP
 SELECT p.IDPoliza,pd.Poliza,pd.PolizaID,pd.FechaContable,pd.Cargo,pd.Abono,'PROD',p.Mov,p.MovID,pd.Cuenta,p.ID
 FROM #MovsPRODE p
