@@ -62,6 +62,16 @@ INSERT INTO #PolizasPRODE
 	AND c.Origen<>'Entrada Produccion'
 	AND c.Estatus='CONCLUIDO'
 	AND c.ID=67141
+	
+	
+	SELECT c.ID,c.Mov,c.MovID,c.FechaContable,c.Origen,c.OrigenID,c.OrigenTipo,c.Empresa,c.Estatus, cd.Cuenta,m.ID AS 'ModuloID',mt.Clave
+		  ,ISNULL(CASE WHEN c.Estatus='CANCELADO' THEN 0 ELSE cd.Debe END,0) AS 'Debe'
+		  ,ISNULL(CASE WHEN c.Estatus='CANCELADO' THEN 0 ELSE cd.Haber END,0) AS 'Haber'
+	FROM Cont AS c
+	JOIN ContD AS cd ON cd.ID = c.ID AND cd.Cuenta='115-003-000'
+	LEFT JOIN MovTipo mt ON mt.Mov=c.Origen AND mt.Modulo=c.OrigenTipo AND mt.Clave='PROD.E'
+	LEFT JOIN Mov m ON c.OrigenTipo=m.Modulo AND c.Empresa=m.Empresa AND c.Origen=m.Mov AND c.OrigenID=m.MovID
+	WHERE c.FechaContable BETWEEN '20231201' AND '20231231'
 
 --Obtiene todas las entradas de produccion basado en las polizas seleccionadas
 INSERT INTO #MovsPRODE
