@@ -8,12 +8,12 @@ GO
 IF EXISTS(SELECT * FROM sysobjects WHERE TYPE='p' AND NAME='xpDICOExpPP')
 DROP PROCEDURE xpDICOExpPP
 GO
---EXEC xpDICOExpPP 999,'TEP2','115-003-000','PP',2023,09,0
+--EXEC xpDICOExpPP 999,'TEP2','115-003-000','PP',2023,9,0
 CREATE PROCEDURE xpDICOExpPP
 @Estacion	INT,
 @Empresa	VARCHAR(5),
-@Cuenta		VARCHAR(15),
-@Almacen	VARCHAR(5),
+@Cuenta		VARCHAR(15)=NULL,
+@Almacen	VARCHAR(5)=NULL,
 @Ejercicio	INT,
 @Periodo	INT,
 @Debug		BIT=0
@@ -116,9 +116,19 @@ CREATE TABLE #AuxU(
 
 DELETE FROM DICOInvContPP WHERE Estacion=@Estacion
 
+IF @Cuenta IS NULL
+	SELECT @Cuenta=a.Cuenta
+	FROM Alm AS a
+	WHERE a.Almacen=@Almacen
+
+IF @Almacen IS NULL
+	SELECT @Almacen=a.Almacen
+	FROM Alm AS a
+	WHERE a.Cuenta=@Cuenta
+
 INSERT INTO #AuxU
 SELECT a.ModuloID,a.Empresa,a.Modulo,a.Fecha,SUM(ISNULL(a.Cargo,0)) AS 'Cargo', SUM(ISNULL(a.Abono,0)) AS 'Abono'
-FROM AuxiliarU a
+FROM AuxiliarU a WITH(NOLOCK)
 WHERE Ejercicio=@Ejercicio
 AND Periodo=@Periodo
 AND Grupo=@Almacen
@@ -133,8 +143,8 @@ INSERT INTO #ProdETbl(ID,Mov,MovID,FechaContable,Origen,OrigenID,OrigenTipo,Esta
 		   ,pd.ProdSerieLote,pd.Cantidad*pd.Costo AS 'Total'
 		  ,ISNULL(CASE WHEN c.Estatus='CANCELADO' THEN 0 ELSE cd.Debe END,0) AS 'Debe'
 		  ,ISNULL(CASE WHEN c.Estatus='CANCELADO' THEN 0 ELSE cd.Haber END,0) AS 'Haber'
-	FROM Cont AS c
-	JOIN ContD AS cd ON cd.ID = c.ID AND cd.Cuenta=@Cuenta
+	FROM Cont AS c WITH(NOLOCK)
+	JOIN ContD AS cd WITH(NOLOCK) ON cd.ID = c.ID AND cd.Cuenta=@Cuenta
 	JOIN MovTipo mt ON mt.Mov=c.Origen AND mt.Modulo=c.OrigenTipo AND mt.Clave='PROD.E'
 	LEFT JOIN Mov m ON c.OrigenTipo=m.Modulo AND c.Empresa=m.Empresa AND c.Origen=m.Mov AND c.OrigenID=m.MovID
 	JOIN Prod p ON p.ID=m.ID
@@ -151,8 +161,8 @@ INSERT INTO #TransferenciasTbl(ID,Mov,MovID,FechaContable,Origen,OrigenID,Origen
 	SELECT c.ID,c.Mov,c.MovID,c.FechaContable,c.Origen,c.OrigenID,c.OrigenTipo,c.Empresa,c.Estatus, cd.Cuenta,m.ID AS 'ModuloID',mt.Clave
 		  ,ISNULL(CASE WHEN c.Estatus='CANCELADO' THEN 0 ELSE cd.Debe END,0) AS 'Debe'
 		  ,ISNULL(CASE WHEN c.Estatus='CANCELADO' THEN 0 ELSE cd.Haber END,0) AS 'Haber'
-	FROM Cont AS c
-	JOIN ContD AS cd ON cd.ID = c.ID AND cd.Cuenta=@Cuenta
+	FROM Cont AS c WITH(NOLOCK)
+	JOIN ContD AS cd WITH(NOLOCK) ON cd.ID = c.ID AND cd.Cuenta=@Cuenta
 	JOIN MovTipo mt ON mt.Mov=c.Origen AND mt.Modulo=c.OrigenTipo AND mt.Clave='INV.T'
 	LEFT JOIN Mov m ON c.OrigenTipo=m.Modulo AND c.Empresa=m.Empresa AND c.Origen=m.Mov AND c.OrigenID=m.MovID
 	WHERE YEAR(c.FechaContable)=@Ejercicio
@@ -170,7 +180,7 @@ SELECT p.ID,p.Mov,p.MovID,p.Empresa,p.FechaContable,p.EstatusCont,p.Cuenta,p.Deb
 	  ,SUM(ISNULL(s.Cargo,0)) AS 'DebeInv'
 	  ,SUM(ISNULL(s.Abono,0)) AS 'HaberInv'
 FROM #ProdETbl p
-LEFT JOIN ProdSerieLoteCosto s ON p.ProdSerieLote=s.ProdSerieLote AND p.Articulo=s.Articulo
+LEFT JOIN ProdSerieLoteCosto s WITH(NOLOCK) ON p.ProdSerieLote=s.ProdSerieLote AND p.Articulo=s.Articulo
 GROUP BY p.ID,p.Mov,p.MovID,p.Empresa,p.FechaContable,p.EstatusCont,p.Cuenta,p.Debe,p.Haber,p.Origen
 		,p.OrigenID,p.OrigenTipo,p.EstatusProd,p.ModuloID,p.Articulo,p.ProdSerieLote,p.Cantidad,p.TotalProd
 		,s.Modulo,s.ModuloID
@@ -197,21 +207,29 @@ IF @Debug=1
 SELECT '#ProdCont', * FROM #ProdCont
 
 
+
 INSERT INTO DICOInvContPP
 SELECT @Estacion,p.ID,p.Empresa,p.Mov,p.MovID,p.FechaContable,p.EstatusCont,p.Cuenta,p.Debe,p.Haber,p.Origen,p.OrigenID,p.OrigenTipo,p.EstatusProd,p.ModuloID,p.ModuloInv,p.ModuloIDInv,
 	   p.DebeInv,p.HaberInv,a.ModuloID AS 'ModuloIDAux',a.Modulo AS 'ModuloAux', a.Fecha AS 'FechaAux', a.Cargo,a.Abono
 FROM #ProdCont p
-JOIN #AuxU a ON p.ModuloID=a.ModuloID
+JOIN #AuxU a ON a.ModuloID=ISNULL(p.ModuloIDInv,p.ModuloID) AND a.Modulo=p.ModuloINV
 
-SELECT * FROM DICOInvContPP WHERE Estacion=@Estacion
-
+INSERT INTO DICOInvContPP
 SELECT @Estacion,p.ID,p.Empresa,p.Mov,p.MovID,p.FechaContable,p.EstatusCont,p.Cuenta,p.Debe,p.Haber,p.Origen,p.OrigenID,p.OrigenTipo,p.EstatusProd,p.ModuloID,p.ModuloInv,p.ModuloIDInv,
 	   p.DebeInv,p.HaberInv,a.ModuloID AS 'ModuloIDAux',a.Modulo AS 'ModuloAux', a.Fecha AS 'FechaAux', a.Cargo,a.Abono
-FROM #ProdCont p
-LEFT JOIN #AuxU a ON p.ModuloIDINV=a.ModuloID
+FROM #AuxU a 
+LEFT JOIN #ProdCont p  ON p.ModuloIDINV=a.ModuloID
 WHERE p.ModuloIDINV IS NULL
 
+INSERT INTO DICOInvContPP
+SELECT @Estacion,p.ID,p.Empresa,p.Mov,p.MovID,p.FechaContable,p.EstatusCont,p.Cuenta,p.Debe,p.Haber,p.Origen,p.OrigenID,p.OrigenTipo,p.EstatusProd,p.ModuloID,p.ModuloInv,p.ModuloIDInv,
+	   p.DebeInv,p.HaberInv,a.ModuloID AS 'ModuloIDAux',a.Modulo AS 'ModuloAux', a.Fecha AS 'FechaAux', a.Cargo,a.Abono
+FROM  #ProdCont p
+LEFT JOIN #AuxU a  ON p.ModuloIDINV=a.ModuloID
+WHERE a.ModuloID IS NULL
 
+IF @Debug=1
+	SELECT * FROM DICOInvContPP WHERE Estacion=@Estacion
 
 RETURN
 END
