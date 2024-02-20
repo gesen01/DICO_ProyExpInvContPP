@@ -8,7 +8,7 @@ GO
 IF EXISTS(SELECT * FROM sysobjects WHERE TYPE='p' AND NAME='xpDICOExpPP')
 DROP PROCEDURE xpDICOExpPP
 GO
---EXEC xpDICOExpPP 999,'TEP2','115-003-000','PP',2023,9,0
+--EXEC xpDICOExpPP 999,'TEP2','115-003-000','PP',2023,10,1
 CREATE PROCEDURE xpDICOExpPP
 @Estacion	INT,
 @Empresa	VARCHAR(5),
@@ -21,18 +21,18 @@ AS
 BEGIN
 CREATE TABLE #ProdETbl(
 	ID			INT				NULL,
-	Mov			VARCHAR(15)		NULL,
+	Mov			VARCHAR(20)		NULL,
 	MovID		VARCHAR(20)		NULL,
 	FechaContable	DATETIME	NULL,
-	Origen		VARCHAR(15)		NULL,
+	Origen		VARCHAR(20)		NULL,
 	OrigenID	VARCHAR(20)		NULL,
-	OrigenTipo	VARCHAR(5)		NULL,
+	OrigenTipo	VARCHAR(10)		NULL,
 	EstatusProd	VARCHAR(10)		NULL,
-	Empresa		VARCHAR(5)		NULL,
+	Empresa		VARCHAR(10)		NULL,
 	EstatusCont	VARCHAR(10)		NULL,
-	Cuenta		VARCHAR(15)		NULL,
+	Cuenta		VARCHAR(20)		NULL,
 	ModuloID	INT				NULL,
-	Clave		VARCHAR(5)		NULL,
+	Clave		VARCHAR(10)		NULL,
 	Cantidad	FLOAT			NULL,
 	Costo		FLOAT			NULL,
 	Articulo	VARCHAR(20)		NULL,
@@ -44,41 +44,41 @@ CREATE TABLE #ProdETbl(
 
 CREATE TABLE #TransferenciasTbl(
 	ID			INT				NULL,
-	Mov			VARCHAR(15)		NULL,
+	Mov			VARCHAR(20)		NULL,
 	MovID		VARCHAR(20)		NULL,
 	FechaContable	DATETIME	NULL,
-	Origen		VARCHAR(15)		NULL,
+	Origen		VARCHAR(20)		NULL,
 	OrigenID	VARCHAR(20)		NULL,
-	OrigenTipo	VARCHAR(5)		NULL,
-	Empresa		VARCHAR(5)		NULL,
+	OrigenTipo	VARCHAR(10)		NULL,
+	Empresa		VARCHAR(10)		NULL,
 	EstatusCont	VARCHAR(10)		NULL,
-	Cuenta		VARCHAR(15)		NULL,
+	Cuenta		VARCHAR(20)		NULL,
 	ModuloID	INT				NULL,
-	Clave		VARCHAR(5)		NULL,
+	Clave		VARCHAR(10)		NULL,
 	Debe		FLOAT			NULL,
 	Haber		FLOAT			NULL
 )
 
 CREATE TABLE #ProdSerieLoteTBL(
 	ID			INT				NULL,
-	Mov			VARCHAR(15)		NULL,
+	Mov			VARCHAR(20)		NULL,
 	MovID		VARCHAR(20)		NULL,
-	Empresa		VARCHAR(5)		NULL,
+	Empresa		VARCHAR(10)		NULL,
 	FechaContable	DATETIME	NULL,
 	EstatusCont	VARCHAR(10)		NULL,
-	Cuenta		VARCHAR(15)		NULL,
+	Cuenta		VARCHAR(20)		NULL,
 	Debe		FLOAT			NULL,
 	Haber		FLOAT			NULL,
-	Origen		VARCHAR(15)		NULL,
+	Origen		VARCHAR(20)		NULL,
 	OrigenID	VARCHAR(20)		NULL,
-	OrigenTipo	VARCHAR(5)		NULL,
+	OrigenTipo	VARCHAR(10)		NULL,
 	EstatusProd	VARCHAR(10)		NULL,
 	ModuloID	INT				NULL,
-	Articulo	VARCHAR(15)		NULL,
-	ProdSerieLote	VARCHAR(15)	NULL,
+	Articulo	VARCHAR(20)		NULL,
+	ProdSerieLote	VARCHAR(20)	NULL,
 	Cantidad	FLOAT			NULL,
 	TotalProd	FLOAT			NULL,
-	ModuloInv	VARCHAR(5)		NULL,
+	ModuloInv	VARCHAR(10)		NULL,
 	ModuloIDInv	INT				NULL,
 	DebeInv		FLOAT			NULL,
 	HaberInv	FLOAT			NULL
@@ -86,20 +86,20 @@ CREATE TABLE #ProdSerieLoteTBL(
 
 CREATE TABLE #ProdCont(
 	ID			INT			NULL,
-	Empresa		VARCHAR(5)	NULL,
-	Mov			VARCHAR(15)	NULL,
+	Empresa		VARCHAR(10)	NULL,
+	Mov			VARCHAR(20)	NULL,
 	MovID		VARCHAR(20)	NULL,
 	FechaContable	DATETIME	NULL,
 	EstatusCont	VARCHAR(10)	NULL,
-	Cuenta		VARCHAR(15)	NULL,
+	Cuenta		VARCHAR(20)	NULL,
 	Debe		FLOAT		NULL,
 	Haber		FLOAT		NULL,
 	OrigenTipo	VARCHAR(10)	NULL,
 	ModuloID	INT			NULL,
-	Origen		VARCHAR(15)	NULL,
+	Origen		VARCHAR(20)	NULL,
 	OrigenID	VARCHAR(20)	NULL,
 	EstatusProd	VARCHAR(10)	NULL,
-	ModuloINV	VARCHAR(5)	NULL,
+	ModuloINV	VARCHAR(10)	NULL,
 	ModuloIDInv	INT			NULL,
 	DebeInv		FLOAT		NULL,
 	HaberInv	FLOAT		NULL
@@ -108,7 +108,7 @@ CREATE TABLE #ProdCont(
 CREATE TABLE #AuxU(
 	ModuloID	INT			NULL,
 	Empresa		VARCHAR(10)	NULL,
-	Modulo		VARCHAR(5)	NULL,
+	Modulo		VARCHAR(10)	NULL,
 	Fecha		DATETIME	NULL,
 	Cargo		FLOAT		NULL,
 	Abono		FLOAT		NULL	
@@ -152,10 +152,23 @@ INSERT INTO #ProdETbl(ID,Mov,MovID,FechaContable,Origen,OrigenID,OrigenTipo,Esta
 	WHERE YEAR(c.FechaContable)=@Ejercicio
 	AND MONTH(c.FechaContable)=@Periodo
 	AND c.Empresa=@Empresa
+	AND pd.Costo IS NOT NULL
 	--AND c.ID=73269
 
+INSERT INTO #ProdETbl(ID,Mov,MovID,FechaContable,Origen,OrigenID,OrigenTipo,Empresa,EstatusCont,Cuenta,Debe,Haber)
+	SELECT c.ID,c.Mov,c.MovID,c.FechaContable,c.Origen,c.OrigenID,c.OrigenTipo,c.Empresa,c.Estatus, cd.Cuenta
+		  ,ISNULL(CASE WHEN c.Estatus='CANCELADO' THEN 0 ELSE cd.Debe END,0) AS 'Debe'
+		  ,ISNULL(CASE WHEN c.Estatus='CANCELADO' THEN 0 ELSE cd.Haber END,0) AS 'Haber'
+	FROM Cont AS c WITH(NOLOCK)
+	JOIN ContD AS cd WITH(NOLOCK) ON cd.ID = c.ID AND cd.Cuenta=@Cuenta
+	WHERE YEAR(c.FechaContable)=@Ejercicio
+	AND MONTH(c.FechaContable)=@Periodo
+	AND c.Empresa=@Empresa
+	AND c.Origen IS NULL
+	AND c.OrigenID IS NULL
+	
 IF @Debug=1
-	SELECT '#ProdETbl', * FROM #ProdETbl
+	SELECT '#ProdETbl', * FROM #ProdETbl WHERE id=73657
 
 INSERT INTO #TransferenciasTbl(ID,Mov,MovID,FechaContable,Origen,OrigenID,OrigenTipo,Empresa,EstatusCont,Cuenta,ModuloID,clave,Debe,Haber)
 	SELECT c.ID,c.Mov,c.MovID,c.FechaContable,c.Origen,c.OrigenID,c.OrigenTipo,c.Empresa,c.Estatus, cd.Cuenta,m.ID AS 'ModuloID',mt.Clave
@@ -206,8 +219,6 @@ FROM #TransferenciasTbl t
 IF @Debug=1
 SELECT '#ProdCont', * FROM #ProdCont
 
-
-
 INSERT INTO DICOInvContPP
 SELECT @Estacion,p.ID,p.Empresa,p.Mov,p.MovID,p.FechaContable,p.EstatusCont,p.Cuenta,p.Debe,p.Haber,p.Origen,p.OrigenID,p.OrigenTipo,p.EstatusProd,p.ModuloID,p.ModuloInv,p.ModuloIDInv,
 	   p.DebeInv,p.HaberInv,a.ModuloID AS 'ModuloIDAux',a.Modulo AS 'ModuloAux', a.Fecha AS 'FechaAux', a.Cargo,a.Abono
@@ -215,14 +226,14 @@ FROM #ProdCont p
 JOIN #AuxU a ON a.ModuloID=ISNULL(p.ModuloIDInv,p.ModuloID) AND a.Modulo=p.ModuloINV
 
 INSERT INTO DICOInvContPP
-SELECT @Estacion,p.ID,p.Empresa,p.Mov,p.MovID,p.FechaContable,p.EstatusCont,p.Cuenta,p.Debe,p.Haber,p.Origen,p.OrigenID,p.OrigenTipo,p.EstatusProd,p.ModuloID,p.ModuloInv,p.ModuloIDInv,
+SELECT @Estacion,p.ID,ISNULL(p.Empresa,@Empresa),p.Mov,p.MovID,p.FechaContable,p.EstatusCont,p.Cuenta,p.Debe,p.Haber,p.Origen,p.OrigenID,p.OrigenTipo,p.EstatusProd,p.ModuloID,p.ModuloInv,p.ModuloIDInv,
 	   p.DebeInv,p.HaberInv,a.ModuloID AS 'ModuloIDAux',a.Modulo AS 'ModuloAux', a.Fecha AS 'FechaAux', a.Cargo,a.Abono
 FROM #AuxU a 
 LEFT JOIN #ProdCont p  ON p.ModuloIDINV=a.ModuloID
 WHERE p.ModuloIDINV IS NULL
 
 INSERT INTO DICOInvContPP
-SELECT @Estacion,p.ID,p.Empresa,p.Mov,p.MovID,p.FechaContable,p.EstatusCont,p.Cuenta,p.Debe,p.Haber,p.Origen,p.OrigenID,p.OrigenTipo,p.EstatusProd,p.ModuloID,p.ModuloInv,p.ModuloIDInv,
+SELECT @Estacion,p.ID,ISNULL(p.Empresa,@Empresa),p.Mov,p.MovID,p.FechaContable,p.EstatusCont,p.Cuenta,p.Debe,p.Haber,p.Origen,p.OrigenID,p.OrigenTipo,p.EstatusProd,p.ModuloID,p.ModuloInv,p.ModuloIDInv,
 	   p.DebeInv,p.HaberInv,a.ModuloID AS 'ModuloIDAux',a.Modulo AS 'ModuloAux', a.Fecha AS 'FechaAux', a.Cargo,a.Abono
 FROM  #ProdCont p
 LEFT JOIN #AuxU a  ON p.ModuloIDINV=a.ModuloID
