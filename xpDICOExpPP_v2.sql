@@ -114,8 +114,12 @@ CREATE TABLE #AuxU(
 	Abono		FLOAT		NULL	
 )
 
+CREATE TABLE #TotalPRODE(
+	ID		INT		NULL,
+	Total	FLOAT	NULL
+)
+
 DELETE FROM DICOInvContPP WHERE Estacion=@Estacion
-DELETE FROM DICOConsumosPP WHERE Estacion=@Estacion
 
 IF @Cuenta IS NULL
 	SELECT @Cuenta=a.Cuenta
@@ -138,23 +142,47 @@ GROUP BY a.ModuloID,a.Empresa,a.Modulo,a.Fecha
 IF @Debug=1
 	SELECT '#AuxU',* FROM #AuxU
 
-INSERT INTO #ProdETbl(ID,Mov,MovID,FechaContable,Origen,OrigenID,OrigenTipo,EstatusProd,Empresa,EstatusCont,Cuenta,ModuloID,clave,Cantidad,Costo,Articulo,ProdSerieLote,TotalProd,Debe,Haber)
-	SELECT c.ID,c.Mov,c.MovID,c.FechaContable,c.Origen,c.OrigenID,c.OrigenTipo,p.Estatus AS 'EstatusProd',c.Empresa,c.Estatus, cd.Cuenta,m.ID AS 'ModuloID',mt.Clave
-		   ,pd.Cantidad,pd.costo,pd.Articulo
-		   ,pd.ProdSerieLote,pd.Cantidad*pd.Costo AS 'Total'
+--Se insertan todas las polizas contables que tienen como origen una entrada de compra
+INSERT INTO #ProdETbl(ID,Mov,MovID,FechaContable,Origen,OrigenID,OrigenTipo,Empresa,EstatusCont,Cuenta,ModuloID,clave,Debe,Haber)
+	SELECT c.ID,c.Mov,c.MovID,c.FechaContable,c.Origen,c.OrigenID,c.OrigenTipo,c.Empresa,c.Estatus, cd.Cuenta,m.ID AS 'ModuloID',mt.Clave
 		  ,ISNULL(CASE WHEN c.Estatus='CANCELADO' THEN 0 ELSE cd.Debe END,0) AS 'Debe'
 		  ,ISNULL(CASE WHEN c.Estatus='CANCELADO' THEN 0 ELSE cd.Haber END,0) AS 'Haber'
 	FROM Cont AS c WITH(NOLOCK)
 	JOIN ContD AS cd WITH(NOLOCK) ON cd.ID = c.ID AND cd.Cuenta=@Cuenta
 	JOIN MovTipo mt ON mt.Mov=c.Origen AND mt.Modulo=c.OrigenTipo AND mt.Clave='PROD.E'
 	LEFT JOIN Mov m ON c.OrigenTipo=m.Modulo AND c.Empresa=m.Empresa AND c.Origen=m.Mov AND c.OrigenID=m.MovID
-	JOIN Prod p ON p.ID=m.ID
-	JOIN ProdD pd ON pd.ID=m.ID
+	--JOIN Prod p ON p.ID=m.ID
+	--JOIN ProdD pd ON pd.ID=m.ID
 	WHERE YEAR(c.FechaContable)=@Ejercicio
 	AND MONTH(c.FechaContable)=@Periodo
 	AND c.Empresa=@Empresa
-	AND pd.Costo IS NOT NULL
+	--AND pd.Costo IS NOT NULL
 	--AND c.ID=73269
+
+--Se actualiza la tabla #ProdETbl con los datos de las entradas de produccion correspondientes
+UPDATE p SET p.EstatusProd=a.Estatus
+			,p.Cantidad=pd.Cantidad
+			,p.Costo=pd.Costo
+			,p.Articulo=pd.Articulo
+			,p.ProdSerieLote=pd.ProdSerieLote
+FROM #ProdETbl p
+JOIN Prod a ON a.ID=p.ModuloID
+JOIN ProdD pd ON pd.ID=p.ModuloID
+WHERE pd.costo IS NOT NULL
+
+--Se insertan los totales de las entradas de produccion de acuerdo a las polizas contables
+INSERT INTO #TotalPRODE
+SELECT p.ID,SUM(DISTINCT ISNULL(pd.Cantidad,0)*ISNULL(pd.Costo,0))
+FROM #ProdETbl p
+JOIN Prod a ON a.ID=p.ModuloID
+JOIN ProdD pd ON pd.ID=p.ModuloID
+WHERE pd.costo IS NOT NULL
+GROUP BY p.ID
+
+--Se actaliza nuevamente la tabla de #ProdEtbl con los totales de cada entrada de produccion correspondiente
+UPDATE p SET p.TotalProd=t.Total
+FROM #ProdETbl p
+JOIN #TotalPRODE t ON p.ID=t.ID
 
 INSERT INTO #ProdETbl(ID,Mov,MovID,FechaContable,Origen,OrigenID,OrigenTipo,Empresa,EstatusCont,Cuenta,Debe,Haber)
 	SELECT c.ID,c.Mov,c.MovID,c.FechaContable,c.Origen,c.OrigenID,c.OrigenTipo,c.Empresa,c.Estatus, cd.Cuenta
@@ -169,7 +197,7 @@ INSERT INTO #ProdETbl(ID,Mov,MovID,FechaContable,Origen,OrigenID,OrigenTipo,Empr
 	AND c.OrigenID IS NULL
 	
 IF @Debug=1
-	SELECT '#ProdETbl', * FROM #ProdETbl WHERE id=74367
+	SELECT '#ProdETbl', * FROM #ProdETbl WHERE id=74371
 
 INSERT INTO #TransferenciasTbl(ID,Mov,MovID,FechaContable,Origen,OrigenID,OrigenTipo,Empresa,EstatusCont,Cuenta,ModuloID,clave,Debe,Haber)
 	SELECT c.ID,c.Mov,c.MovID,c.FechaContable,c.Origen,c.OrigenID,c.OrigenTipo,c.Empresa,c.Estatus, cd.Cuenta,m.ID AS 'ModuloID',mt.Clave
@@ -194,24 +222,13 @@ SELECT p.ID,p.Mov,p.MovID,p.Empresa,p.FechaContable,p.EstatusCont,p.Cuenta,p.Deb
 	  ,SUM(ISNULL(s.Cargo,0)) AS 'DebeInv'
 	  ,SUM(ISNULL(s.Abono,0)) AS 'HaberInv'
 FROM #ProdETbl p
-LEFT JOIN ProdSerieLoteCosto s WITH(NOLOCK) ON p.ProdSerieLote=s.ProdSerieLote AND p.Articulo=s.Articulo AND s.Modulo='PROD'
+LEFT JOIN ProdSerieLoteCosto s WITH(NOLOCK) ON p.ProdSerieLote=s.ProdSerieLote AND p.Articulo=s.Articulo
 GROUP BY p.ID,p.Mov,p.MovID,p.Empresa,p.FechaContable,p.EstatusCont,p.Cuenta,p.Debe,p.Haber,p.Origen
 		,p.OrigenID,p.OrigenTipo,p.EstatusProd,p.ModuloID,p.Articulo,p.ProdSerieLote,p.Cantidad,p.TotalProd
 		,s.Modulo,s.ModuloID
 
-INSERT INTO #ProdSerieLoteTBL
-SELECT p.ID,p.Mov,p.MovID,p.Empresa,p.FechaContable,p.EstatusCont,p.Cuenta,p.Debe,p.Haber,p.Origen,p.OrigenID,p.OrigenTipo,p.EstatusProd,p.ModuloID,NULL,NULL,NULL,NULL
-	  ,'INV',NULL
-	  ,SUM(ISNULL(s.Cargo,0)) AS 'DebeInv'
-	  ,SUM(ISNULL(s.Abono,0)) AS 'HaberInv'
-FROM #ProdETbl p
-LEFT JOIN ProdSerieLoteCosto s WITH(NOLOCK) ON p.ProdSerieLote=s.ProdSerieLote AND p.Articulo=s.Articulo AND s.Modulo='INV'
-GROUP BY p.ID,p.Mov,p.MovID,p.Empresa,p.FechaContable,p.EstatusCont,p.Cuenta,p.Debe,p.Haber,p.Origen
-		,p.OrigenID,p.OrigenTipo,p.EstatusProd,p.ModuloID
-
-
 IF @Debug=1
-	SELECT '#ProdSerieLoteTBL',* FROM #ProdSerieLoteTBL WHERE id=74367
+	SELECT '#ProdSerieLoteTBL',* FROM #ProdSerieLoteTBL
 	
 INSERT INTO #ProdCont
 SELECT p.ID, p.Empresa, p.Mov, p.MovID, p.FechaContable, p.EstatusCont, p.Cuenta, p.Debe, p.Haber, p.OrigenTipo
@@ -231,21 +248,6 @@ FROM #TransferenciasTbl t
 IF @Debug=1
 SELECT '#ProdCont', * FROM #ProdCont
 
---Se insertan los datos del detalle de los consumos por cada entrada de produccion
-INSERT INTO DICOConsumosPP
-SELECT @Estacion,i.ID,i.Mov,i.MovID,i.FechaEmision,i.Estatus
-	,p.Origen,p.OrigenID,s.Articulo,p.ProdSerieLote,p.Cantidad
-	  ,SUM(DISTINCT ISNULL(s.Cargo,0)) AS 'DebeInv'
-	  ,SUM(DISTINCT ISNULL(s.Abono,0)) AS 'HaberInv'
-FROM #ProdETbl p
-JOIN ProdSerieLoteCosto s WITH(NOLOCK) ON p.ProdSerieLote=s.ProdSerieLote AND p.Articulo=s.Articulo AND s.Modulo='INV'
-JOIN Inv i ON i.ID=s.ModuloID
-GROUP BY i.ID,i.Mov,i.MovID,i.FechaEmision,i.Estatus,p.Origen,p.OrigenID,s.Articulo,p.Articulo,p.ProdSerieLote,p.Cantidad
-
-IF @Debug=1
-	SELECT 'DICOConsumosPP', * FROM DICOConsumosPP WHERE Origen='Entrada´Produccion' and OrigenID='TEP2672'
-
---Se insertan los datos a mostrar en el tablero principal
 INSERT INTO DICOInvContPP
 SELECT @Estacion,p.ID,p.Empresa,p.Mov,p.MovID,p.FechaContable,p.EstatusCont,p.Cuenta,p.Debe,p.Haber,p.Origen,p.OrigenID,p.OrigenTipo,p.EstatusProd,p.ModuloID,p.ModuloInv,p.ModuloIDInv,
 	   p.DebeInv,p.HaberInv,a.ModuloID AS 'ModuloIDAux',a.Modulo AS 'ModuloAux', a.Fecha AS 'FechaAux', a.Cargo,a.Abono
