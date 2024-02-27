@@ -22,15 +22,15 @@ BEGIN
 
 CREATE TABLE #ProdTbl(
 	ID		INT				NULL,
-	Mov		VARCHAR(20)		NULL,
-	MovID	VARCHAR(25)		NULL,
+	Mov		VARCHAR(30)		NULL,
+	MovID	VARCHAR(35)		NULL,
 	FechaEmision	DATETIME	NULL,
 	Estatus	VARCHAR(15)		NULL,
-	Empresa	VARCHAR(5)		NULL,
-	Clave	VARCHAR(5)		NULL,
+	Empresa	VARCHAR(10)		NULL,
+	Clave	VARCHAR(10)		NULL,
 	Cantidad	FLOAT		NULL,
 	Costo		FLOAT		NULL,
-	Articulo	VARCHAR(20)	NULL,
+	Articulo	VARCHAR(25)	NULL,
 	ProdSerieLote	VARCHAR(45)	NULL,
 	Total		FLOAT		NULL	
 )
@@ -42,11 +42,11 @@ CREATE TABLE #ContTbl(
 	FechaContable	DATETIME	NULL,
 	Origen		VARCHAR(20)		NULL,
 	OrigenID	VARCHAR(25)		NULL,
-	OrigenTipo	VARCHAR(5)		NULL,
-	Empresa		VARCHAR(5)		NULL,
+	OrigenTipo	VARCHAR(10)		NULL,
+	Empresa		VARCHAR(10)		NULL,
 	Estatus		VARCHAR(15)		NULL,
 	Cuenta		VARCHAR(25)		NULL,
-	Clave		VARCHAR(5)		NULL,
+	Clave		VARCHAR(10)		NULL,
 	Debe		FLOAT			NULL,
 	Haber		FLOAT			NULL
 )
@@ -227,7 +227,7 @@ INSERT INTO #ProdETbl(ID,Mov,MovID,FechaContable,Origen,OrigenID,OrigenTipo,Empr
 	AND c.OrigenID IS NULL
 	
 IF @Debug=1
-	SELECT '#ProdETbl', * FROM #ProdETbl --WHERE id=74367
+	SELECT '#ProdETbl',* FROM #ProdETbl ORDER BY MovID--WHERE id=74367
 
 INSERT INTO #TransferenciasTbl(ID,Mov,MovID,FechaContable,Origen,OrigenID,OrigenTipo,Empresa,EstatusCont,Cuenta,ModuloID,clave,Debe,Haber)
 	SELECT c.ID,c.Mov,c.MovID,c.FechaContable,c.Origen,c.OrigenID,c.OrigenTipo,c.Empresa,c.Estatus, cd.Cuenta,m.ID AS 'ModuloID',mt.Clave
@@ -276,10 +276,10 @@ IF @Debug=1
 INSERT INTO #ProdCont
 SELECT p.ID, p.Empresa, p.Mov, p.MovID, p.FechaContable, p.EstatusCont, p.Cuenta
 	,CASE
-		WHEN p.EstatusProd='CONCLUIDO' THEN p.Debe
+		WHEN p.EstatusProd='CONCLUIDO' OR p.EstatusProd IS NULL THEN p.Debe
 		ELSE 0 END
 	, CASE
-		WHEN p.EstatusProd='CONCLUIDO' THEN p.Haber
+		WHEN p.EstatusProd='CONCLUIDO' OR p.EstatusProd IS NULL THEN p.Haber
 		ELSE 0 END
 	, p.OrigenTipo
  	  ,p.ModuloID, p.Origen, p.OrigenID,p.EstatusProd, p.ModuloINV, p.ModuloIDINV
