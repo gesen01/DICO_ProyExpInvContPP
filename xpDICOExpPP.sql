@@ -8,7 +8,7 @@ GO
 IF EXISTS(SELECT * FROM sysobjects WHERE TYPE='p' AND NAME='xpDICOExpPP')
 DROP PROCEDURE xpDICOExpPP
 GO
---EXEC xpDICOExpPP 999,'TEP2','115-003-000','PP',2023,08,1
+--EXEC xpDICOExpPP 999,'XONA','115-003-000','PP',2023,01,1
 CREATE PROCEDURE xpDICOExpPP
 @Estacion	INT,
 @Empresa	VARCHAR(5),
@@ -182,7 +182,8 @@ SELECT p.ID,p.Mov,p.MovID,p.FechaEmision,p.Estatus AS 'EstatusProd',p.Empresa,mt
 	WHERE YEAR(p.FechaEmision)=@Ejercicio
 	AND MONTH(p.FechaEmision)=@Periodo
 	AND p.Empresa=@Empresa
-	AND pd.Costo IS NOT NULL
+	AND ISNULL(pd.Costo,0) <> 0
+
 
 IF @Debug=1
 	SELECT '#ProdTbl',* FROM #ProdTbl
@@ -199,6 +200,9 @@ SELECT c.ID,c.Mov,c.MovID,c.FechaContable,c.Origen,c.OrigenID,c.OrigenTipo,c.Emp
 	WHERE YEAR(c.FechaContable)=@Ejercicio
 	AND MONTH(c.FechaContable)=@Periodo
 	AND c.Empresa=@Empresa
+
+IF @Debug=1
+	SELECT '#ContTbl',* FROM #ContTbl
 
 --Se insertan todos los movimientos que existen en produccion con su respectiva poliza
 INSERT INTO #ProdETbl(ID,Mov,MovID,FechaContable,Origen,OrigenID,OrigenTipo,EstatusProd,Empresa,EstatusCont,Cuenta,ModuloID,clave,Cantidad,Costo,Articulo,ProdSerieLote,TotalProd,Debe,Haber)
@@ -260,15 +264,19 @@ GROUP BY p.ID,p.Mov,p.MovID,p.Empresa,p.FechaContable,p.EstatusCont,p.Cuenta,p.D
 
 
 INSERT INTO #ProdSerieLoteTBL
-SELECT p.ID,p.Mov,p.MovID,p.Empresa,p.FechaContable,p.EstatusCont,p.Cuenta,ISNULL(p.Debe,SUM(ISNULL(s.Cargo,0))),ISNULL(p.Haber,SUM(ISNULL(s.Abono,0)))
+SELECT p.ID,p.Mov,p.MovID,p.Empresa,p.FechaContable,p.EstatusCont,p.Cuenta
+	  ,ISNULL(p.Debe,SUM(ISNULL(s.Cargo,0)))
+	  ,ISNULL(p.Haber,SUM(ISNULL(s.Abono,0)))
 	  ,p.Origen,p.OrigenID,p.OrigenTipo,p.EstatusProd,p.ModuloID,NULL,NULL,NULL,NULL
 	  ,'INV',NULL
 	  ,SUM(ISNULL(s.Cargo,0)) AS 'DebeInv'
 	  ,SUM(ISNULL(s.Abono,0)) AS 'HaberInv'
 FROM #ProdETbl p
 JOIN ProdSerieLoteCosto s WITH(NOLOCK) ON p.ProdSerieLote=s.ProdSerieLote AND p.Articulo=s.Articulo AND s.Modulo='INV'
+WHERE p.ID IS NOT NULL
 GROUP BY p.ID,p.Mov,p.MovID,p.Empresa,p.FechaContable,p.EstatusCont,p.Cuenta,p.Debe,p.Haber,p.Origen
 		,p.OrigenID,p.OrigenTipo,p.EstatusProd,p.ModuloID
+
 
 IF @Debug=1
 	SELECT '#ProdSerieLoteTBL',* FROM #ProdSerieLoteTBL --WHERE id=74531
@@ -344,3 +352,4 @@ END
 --DROP TABLE #ProdSerieLoteTBL
 --DROP TABLE #ProdCont
 --DROP TABLE #AuxU
+
